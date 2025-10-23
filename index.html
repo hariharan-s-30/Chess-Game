@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chess AI Game</title>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- GSAP -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<!-- Chess Libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<!-- Font Awesome -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+<style>
+  /* Chess board container - Fixed aspect ratio */
+  .board-wrapper {
+    width: 100%;
+    max-width: min(90vw, 500px);
+    aspect-ratio: 1 / 1;
+    margin: 0 auto;
+  }
+  
+  #board {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    border: 3px solid #8b4513;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  }
+  
+  .chess-square {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: min(4vw, 35px);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    min-height: 0; /* Prevent grid items from expanding */
+    min-width: 0;  /* Prevent grid items from expanding */
+  }
+  
+  .white-square {
+    background: #f0d9b5;
+  }
+  
+  .black-square {
+    background: #b58863;
+  }
+  
+  .selected-square {
+    background: #aec6cf !important;
+  }
+  
+  .possible-move::after {
+    content: '';
+    position: absolute;
+    width: 25%;
+    height: 25%;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 50%;
+    z-index: 1;
+  }
+
+  /* Chess pieces */
+  .chess-piece {
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+    transition: all 0.2s ease;
+    z-index: 2;
+    position: relative;
+  }
+
+  .chess-piece:hover {
+    transform: scale(1.1);
+  }
+
+  .white-piece {
+    color: #ffffff;
+    text-shadow: 1px 1px 2px #000000;
+  }
+
+  .black-piece {
+    color: #000000;
+    text-shadow: 1px 1px 2px #ffffff;
+  }
+
+  /* Custom slider */
+  .difficulty-slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444);
+    outline: none;
+  }
+  
+  .difficulty-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #3b82f6;
+    cursor: pointer;
+    border: 3px solid white;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  }
+  
+  .pulse-glow {
+    animation: pulse-glow 2s infinite;
+  }
+  
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.4); }
+    50% { box-shadow: 0 0 30px rgba(59, 130, 246, 0.8); }
+  }
+
+  /* Overlay styles */
+  .overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .overlay-content {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 3rem;
+    border-radius: 20px;
+    text-align: center;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+  }
+
+  .disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
+  /* Mobile responsiveness */
+  @media (max-width: 768px) {
+    .game-content {
+      flex-direction: column;
+    }
+    
+    .board-wrapper {
+      max-width: min(95vw, 400px);
+    }
+    
+    .chess-square {
+      font-size: min(5vw, 30px);
+    }
+    
+    .controls {
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    .controls button {
+      width: 200px;
+    }
+
+    .overlay-content {
+      padding: 2rem;
+      margin: 1rem;
+    }
+  }
+</style>
+</head>
+<body class="bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 min-h-screen flex items-center justify-center p-4">
+  
+  <!-- ELO Selection Overlay -->
+  <div id="eloOverlay" class="overlay">
+    <div class="overlay-content">
+      <div class="flex items-center justify-center gap-3 mb-6">
+        <i class="fas fa-chess-knight text-yellow-300 text-4xl"></i>
+        <h1 class="text-4xl font-bold text-white">Chess AI Challenge</h1>
+        <i class="fas fa-chess-queen text-pink-300 text-4xl"></i>
+      </div>
+      
+      <p class="text-white/80 text-lg mb-8">Select your opponent's skill level to begin</p>
+      
+      <div class="space-y-6 mb-8">
+        <div class="difficulty-labels flex justify-between text-white/80 text-sm">
+          <span>250</span>
+          <span>750</span>
+          <span>1250</span>
+          <span>1750</span>
+          <span>2000</span>
+        </div>
+        
+        <input type="range" min="250" max="2000" step="250" value="1250" class="difficulty-slider w-full" id="initialDifficultySlider">
+        
+        <div class="current-difficulty text-center">
+          <span id="initialDifficultyText" class="bg-gradient-to-r from-green-500 to-blue-500 text-white px-6 py-3 rounded-full text-lg font-semibold inline-block">
+            1250 ELO
+          </span>
+        </div>
+      </div>
+
+      <button id="startGameBtn" class="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white px-12 py-4 rounded-full font-bold text-xl shadow-lg transition-all duration-300 transform hover:scale-105 hover:shadow-xl flex items-center gap-3 mx-auto">
+        <i class="fas fa-play"></i>
+        Start Game
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Game Container (Initially Hidden) -->
+  <div id="gameContainer" class="game-container max-w-6xl w-full bg-white/10 backdrop-blur-lg rounded-3xl shadow-2xl overflow-hidden border border-white/20 hidden">
+    
+    <!-- Header -->
+    <div class="header bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 text-white p-8 text-center relative overflow-hidden">
+      <div class="absolute inset-0 bg-black/20"></div>
+      <div class="relative z-10">
+        <h1 class="text-4xl md:text-5xl font-bold mb-3 flex items-center justify-center gap-3">
+          <i class="fas fa-chess-knight text-yellow-300"></i>
+          Chess AI Challenge
+          <i class="fas fa-chess-queen text-pink-300"></i>
+        </h1>
+        <p class="text-xl opacity-90">Playing against <span id="currentEloDisplay">1250</span> ELO opponent</p>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="game-content flex flex-col lg:flex-row gap-8 p-8">
+      
+      <!-- Left Column - Board -->
+      <div class="board-section flex-1 flex flex-col items-center">
+        <div class="board-container bg-white/5 p-4 md:p-6 rounded-2xl border border-white/10 w-full">
+          <!-- Chess Board -->
+          <div class="board-wrapper">
+            <div id="board">
+              <!-- Board will be generated by JavaScript -->
+            </div>
+          </div>
+        </div>
+        
+        <!-- Controls -->
+        <div class="controls flex gap-4 mt-6 flex-wrap justify-center">
+          <button id="resetBtn" class="bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white px-6 md:px-8 py-3 rounded-full font-semibold shadow-lg transition-all duration-300 transform hover:scale-105 hover:shadow-xl flex items-center gap-2">
+            <i class="fas fa-redo"></i>
+            New Game
+          </button>
+          <button id="undoBtn" class="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white px-6 md:px-8 py-3 rounded-full font-semibold shadow-lg transition-all duration-300 transform hover:scale-105 hover:shadow-xl flex items-center gap-2">
+            <i class="fas fa-undo"></i>
+            Undo Move
+          </button>
+          <button id="changeEloBtn" class="bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white px-6 md:px-8 py-3 rounded-full font-semibold shadow-lg transition-all duration-300 transform hover:scale-105 hover:shadow-xl flex items-center gap-2">
+            <i class="fas fa-sliders-h"></i>
+            Change ELO
+          </button>
+        </div>
+      </div>
+
+      <!-- Right Column - Info Panels -->
+      <div class="info-section flex-1 space-y-6">
+        
+        <!-- Status Card -->
+        <div class="status-card bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10 shadow-lg">
+          <div class="flex items-center gap-3 mb-4">
+            <i class="fas fa-info-circle text-blue-400 text-xl"></i>
+            <h3 class="text-xl font-bold text-white">Game Status</h3>
+          </div>
+          <div id="status" class="text-center py-4 px-6 bg-white/10 rounded-xl text-white text-lg font-semibold border border-white/20 transition-all duration-300">
+            Select ELO to start
+          </div>
+        </div>
+
+        <!-- Current ELO Card -->
+        <div class="elo-card bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10 shadow-lg">
+          <div class="flex items-center gap-3 mb-4">
+            <i class="fas fa-trophy text-yellow-400 text-xl"></i>
+            <h3 class="text-xl font-bold text-white">Current Opponent</h3>
+          </div>
+          <div class="text-center">
+            <div id="currentEloBadge" class="bg-gradient-to-r from-green-500 to-blue-500 text-white px-6 py-3 rounded-full text-xl font-bold inline-block mb-2">
+              1250 ELO
+            </div>
+            <p class="text-white/70 text-sm">AI Chess Engine</p>
+          </div>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid grid grid-cols-2 gap-4">
+          <div class="stat-card bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10 shadow-lg text-center">
+            <div class="text-3xl font-bold text-white mb-2" id="moveCount">0</div>
+            <div class="text-white/70 text-sm">Moves Played</div>
+          </div>
+          
+          <div class="stat-card bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10 shadow-lg text-center">
+            <div class="text-3xl font-bold text-white mb-2" id="gameTime">0:00</div>
+            <div class="text-white/70 text-sm">Game Time</div>
+          </div>
+        </div>
+
+        <!-- Moves History -->
+        <div class="moves-history bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10 shadow-lg">
+          <div class="flex items-center gap-3 mb-4">
+            <i class="fas fa-history text-purple-400 text-xl"></i>
+            <h3 class="text-xl font-bold text-white">Move History</h3>
+          </div>
+          <div id="movesList" class="max-h-40 overflow-y-auto space-y-2 bg-white/5 rounded-xl p-4 border border-white/10">
+            <!-- Moves will be populated here -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer bg-black/30 text-white/70 text-center p-4 text-sm border-t border-white/10">
+      <p>Chess AI Game &copy; 2023 | Advanced Chess Engine</p>
+    </div>
+  </div>
+
+  <script>
+    const API_KEY = "mysecretkey123";
+    const BACKEND_URL = "http://127.0.0.1:8000";
+    let game;
+    let statusDiv;
+    let gameStartTime;
+    let gameTimer;
+    let currentDifficulty = 1250; // Start with 1250 ELO
+    let selectedSquare = null;
+    let possibleMoves = [];
+    let gameStarted = false;
+
+    // Chess piece Unicode characters
+    const pieces = {
+      'wK': '♔', 'wQ': '♕', 'wR': '♖', 'wB': '♗', 'wN': '♘', 'wP': '♙',
+      'bK': '♚', 'bQ': '♛', 'bR': '♜', 'bB': '♝', 'bN': '♞', 'bP': '♟'
+    };
+
+    // Initialize the chess board
+    function initializeBoard() {
+      const board = document.getElementById('board');
+      board.innerHTML = '';
+      
+      // Create 8x8 grid
+      for (let row = 0; row < 8; row++) {
+        for (let col = 0; col < 8; col++) {
+          const square = document.createElement('div');
+          const squareId = String.fromCharCode(97 + col) + (8 - row);
+          
+          square.className = `chess-square ${(row + col) % 2 === 0 ? 'white-square' : 'black-square'}`;
+          square.id = squareId;
+          square.dataset.row = row;
+          square.dataset.col = col;
+          
+          square.addEventListener('click', () => handleSquareClick(squareId));
+          
+          board.appendChild(square);
+        }
+      }
+      
+      updateBoard();
+    }
+
+    // Update board with current position
+    function updateBoard() {
+      if (!gameStarted) return;
+      
+      // Clear all pieces and highlights
+      document.querySelectorAll('.chess-square').forEach(square => {
+        square.innerHTML = '';
+        square.classList.remove('selected-square', 'possible-move');
+      });
+      
+      // Place pieces
+      for (let row = 0; row < 8; row++) {
+        for (let col = 0; col < 8; col++) {
+          const squareId = String.fromCharCode(97 + col) + (8 - row);
+          const piece = game.get(squareId);
+          const squareElement = document.getElementById(squareId);
+          
+          if (piece) {
+            const pieceElement = document.createElement('div');
+            pieceElement.className = `chess-piece ${piece.color === 'w' ? 'white-piece' : 'black-piece'}`;
+            pieceElement.textContent = pieces[piece.color + piece.type.toUpperCase()];
+            squareElement.appendChild(pieceElement);
+          }
+        }
+      }
+      
+      // Highlight selected square and possible moves
+      if (selectedSquare) {
+        const selectedElement = document.getElementById(selectedSquare);
+        if (selectedElement) {
+          selectedElement.classList.add('selected-square');
+        }
+        
+        possibleMoves.forEach(move => {
+          const moveElement = document.getElementById(move.to);
+          if (moveElement) {
+            moveElement.classList.add('possible-move');
+          }
+        });
+      }
+    }
+
+    // Get possible moves for a square
+    function getPossibleMoves(square) {
+      const moves = game.moves({ square: square, verbose: true });
+      return moves.map(move => ({ from: move.from, to: move.to }));
+    }
+
+    // Update status with animation
+    function updateStatus() {
+      let statusText = "";
+      let statusClass = "bg-gradient-to-r from-blue-500 to-purple-500 text-white";
+      
+      if (game.in_checkmate()) {
+        statusText = `🎯 Checkmate! ${game.turn()==='w'?'Black':'White'} wins!`;
+        statusClass = "bg-gradient-to-r from-red-500 to-pink-500 text-white pulse-glow";
+        clearInterval(gameTimer);
+      } else if (game.in_stalemate()) {
+        statusText = "🤝 Stalemate! Draw.";
+        statusClass = "bg-gradient-to-r from-yellow-500 to-amber-500 text-white";
+        clearInterval(gameTimer);
+      } else if (game.in_check()) {
+        statusText = `⚡ Check! ${game.turn()==='w'?'White':'Black'} to move.`;
+        statusClass = "bg-gradient-to-r from-orange-500 to-red-500 text-white";
+      } else {
+        statusText = `${game.turn()==='w'?'⚪ White':'⚫ Black'} to move`;
+        statusClass = "bg-gradient-to-r from-blue-500 to-purple-500 text-white";
+      }
+      
+      statusDiv.textContent = statusText;
+      statusDiv.className = `text-center py-4 px-6 rounded-xl text-lg font-semibold border border-white/20 transition-all duration-300 ${statusClass}`;
+      
+      updateMoveHistory();
+      updateStatistics();
+    }
+
+    // Update move history
+    function updateMoveHistory() {
+      const movesList = document.getElementById("movesList");
+      const moves = game.history();
+      
+      movesList.innerHTML = "";
+      
+      for (let i = 0; i < moves.length; i += 2) {
+        const moveNumber = Math.floor(i/2) + 1;
+        const whiteMove = moves[i];
+        const blackMove = moves[i+1] || "";
+        
+        const moveItem = document.createElement("div");
+        moveItem.className = "flex justify-between items-center py-2 px-3 bg-white/5 rounded-lg text-white text-sm font-medium border border-white/10";
+        moveItem.innerHTML = `
+          <span class="text-white/60">${moveNumber}.</span>
+          <span>${whiteMove} ${blackMove}</span>
+        `;
+        
+        movesList.appendChild(moveItem);
+      }
+      
+      movesList.scrollTop = movesList.scrollHeight;
+    }
+
+    // Update statistics
+    function updateStatistics() {
+      document.getElementById("moveCount").textContent = game.history().length;
+    }
+
+    // Start game timer
+    function startGameTimer() {
+      gameStartTime = new Date();
+      gameTimer = setInterval(() => {
+        const now = new Date();
+        const diff = Math.floor((now - gameStartTime) / 1000);
+        const minutes = Math.floor(diff / 60);
+        const seconds = diff % 60;
+        document.getElementById("gameTime").textContent = 
+          `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+      }, 1000);
+    }
+
+    // Handle square click
+    function handleSquareClick(squareId) {
+      if (!gameStarted) return;
+      
+      const piece = game.get(squareId);
+      
+      // If a square is already selected
+      if (selectedSquare) {
+        // Try to move
+        const move = game.move({
+          from: selectedSquare,
+          to: squareId,
+          promotion: 'q'
+        });
+        
+        if (move) {
+          // Valid move - send to API
+          handlePlayerMove(selectedSquare, squareId);
+          selectedSquare = null;
+          possibleMoves = [];
+        } else {
+          // If clicking on another piece of the same color, select that instead
+          if (piece && piece.color === 'w') {
+            selectedSquare = squareId;
+            possibleMoves = getPossibleMoves(squareId);
+          } else {
+            selectedSquare = null;
+            possibleMoves = [];
+          }
+        }
+      } else {
+        // Select a piece (only white pieces for player)
+        if (piece && piece.color === 'w') {
+          selectedSquare = squareId;
+          possibleMoves = getPossibleMoves(squareId);
+        }
+      }
+      
+      updateBoard();
+    }
+
+    // Handle player move and communicate with API
+    async function handlePlayerMove(from, to) {
+      updateStatus();
+
+      try {
+        // Send player move to backend API
+        const response = await fetch(`${BACKEND_URL}/move`, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json", 
+            "x-api-key": API_KEY 
+          },
+          body: JSON.stringify({ 
+            move: from + to,
+            difficulty: currentDifficulty 
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+
+        if (data.next_move) {
+          // Make AI move
+          const aiMove = game.move({
+            from: data.next_move.slice(0, 2),
+            to: data.next_move.slice(2, 4),
+            promotion: 'q'
+          });
+          
+          if (aiMove) {
+            updateBoard();
+            updateStatus();
+          }
+        }
+      } catch(err) {
+        console.error("Error connecting to API:", err);
+        game.undo(); // Undo the player's move if API call fails
+        updateBoard();
+        updateStatus();
+        alert("Error connecting to chess engine. Please try again.");
+      }
+    }
+
+    // Set difficulty on backend
+    async function setDifficulty(difficulty) {
+      try {
+        const response = await fetch(`${BACKEND_URL}/difficulty`, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json", 
+            "x-api-key": API_KEY 
+          },
+          body: JSON.stringify({ 
+            difficulty: difficulty
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log("Difficulty set:", data);
+        return data;
+      } catch(err) {
+        console.error("Error setting difficulty:", err);
+        throw err;
+      }
+    }
+
+    // Reset board and notify backend
+    async function resetGame() {
+      if (!gameStarted) return;
+      
+      game.reset();
+      selectedSquare = null;
+      possibleMoves = [];
+      initializeBoard();
+      clearInterval(gameTimer);
+      startGameTimer();
+      updateStatus();
+      
+      try {
+        await fetch(`${BACKEND_URL}/reset`, {
+          method: "POST",
+          headers: {
+            "x-api-key": API_KEY,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            difficulty: currentDifficulty
+          })
+        });
+      } catch(e) {
+        console.error("Reset API error:", e);
+      }
+    }
+
+    // Undo move and notify backend
+    async function undoMove() {
+      if (!gameStarted) return;
+      
+      if (game.history().length >= 2) {
+        game.undo(); // AI move
+        game.undo(); // Player move
+        selectedSquare = null;
+        possibleMoves = [];
+        updateBoard();
+        updateStatus();
+        
+        try {
+          await fetch(`${BACKEND_URL}/undo`, {
+            method: "POST",
+            headers: {
+              "x-api-key": API_KEY,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              difficulty: currentDifficulty
+            })
+          });
+        } catch(e) {
+          console.error("Undo API error:", e);
+        }
+      }
+    }
+
+    // Load initial board state from backend
+    async function loadBoard() {
+      try {
+        const response = await fetch(`${BACKEND_URL}/board`, {
+          method: "GET",
+          headers: {
+            "x-api-key": API_KEY
+          }
+        });
+        const data = await response.json();
+        if (data.board_fen) {
+          game.load(data.board_fen);
+          updateBoard();
+        }
+        updateStatus();
+      } catch(e) {
+        console.error("Load board API error:", e);
+      }
+    }
+
+    // Update difficulty display
+    function updateDifficultyDisplay(elo) {
+      const element = document.getElementById('currentEloBadge');
+      const headerElement = document.getElementById('currentEloDisplay');
+      
+      element.textContent = `${elo} ELO`;
+      headerElement.textContent = elo;
+      
+      // Color coding based on difficulty
+      let colorClass = "bg-gradient-to-r from-green-500 to-blue-500";
+      if (elo <= 500) {
+        colorClass = "bg-gradient-to-r from-green-500 to-emerald-500";
+      } else if (elo <= 1000) {
+        colorClass = "bg-gradient-to-r from-cyan-500 to-blue-500";
+      } else if (elo <= 1500) {
+        colorClass = "bg-gradient-to-r from-blue-500 to-purple-500";
+      } else {
+        colorClass = "bg-gradient-to-r from-purple-500 to-red-500";
+      }
+      
+      element.className = `${colorClass} text-white px-6 py-3 rounded-full text-xl font-bold inline-block mb-2`;
+    }
+
+    // Update initial difficulty display (for overlay)
+    function updateInitialDifficultyDisplay() {
+      const elo = parseInt(document.getElementById('initialDifficultySlider').value);
+      const element = document.getElementById('initialDifficultyText');
+      
+      element.textContent = `${elo} ELO`;
+      
+      // Color coding based on difficulty
+      let colorClass = "bg-gradient-to-r from-green-500 to-blue-500";
+      if (elo <= 500) {
+        colorClass = "bg-gradient-to-r from-green-500 to-emerald-500";
+      } else if (elo <= 1000) {
+        colorClass = "bg-gradient-to-r from-cyan-500 to-blue-500";
+      } else if (elo <= 1500) {
+        colorClass = "bg-gradient-to-r from-blue-500 to-purple-500";
+      } else {
+        colorClass = "bg-gradient-to-r from-purple-500 to-red-500";
+      }
+      
+      element.className = `${colorClass} text-white px-6 py-3 rounded-full text-lg font-semibold inline-block`;
+    }
+
+    // Start the game
+    async function startGame() {
+      const selectedElo = parseInt(document.getElementById('initialDifficultySlider').value);
+      currentDifficulty = selectedElo;
+      
+      try {
+        // Set difficulty on backend
+        await setDifficulty(selectedElo);
+        
+        // Hide overlay and show game
+        document.getElementById('eloOverlay').style.display = 'none';
+        document.getElementById('gameContainer').classList.remove('hidden');
+        
+        // Initialize game
+        game = new Chess();
+        statusDiv = document.getElementById("status");
+        initializeBoard();
+        updateStatus();
+        startGameTimer();
+        updateDifficultyDisplay(selectedElo);
+        
+        gameStarted = true;
+        
+        // Animate game container entrance
+        gsap.from('#gameContainer', { 
+          duration: 1, 
+          y: 50, 
+          opacity: 0, 
+          ease: 'back.out(1.7)' 
+        });
+        
+      } catch(err) {
+        console.error("Failed to start game:", err);
+        alert("Failed to start game. Please try again.");
+      }
+    }
+
+    // Change ELO during game
+    function changeElo() {
+      if (confirm("Change ELO? This will start a new game with the new difficulty.")) {
+        document.getElementById('eloOverlay').style.display = 'flex';
+        document.getElementById('gameContainer').classList.add('hidden');
+        gameStarted = false;
+      }
+    }
+
+    // Wait for DOM to be fully loaded
+    document.addEventListener('DOMContentLoaded', function() {
+      // Initialize overlay animations
+      gsap.from('.overlay-content', { 
+        duration: 1, 
+        y: 30, 
+        opacity: 0, 
+        ease: 'back.out(1.7)' 
+      });
+
+      // Initial difficulty slider handler
+      document.getElementById('initialDifficultySlider').addEventListener('input', function() {
+        updateInitialDifficultyDisplay();
+      });
+
+      // Start game button
+      document.getElementById('startGameBtn').addEventListener('click', startGame);
+
+      // Game control buttons
+      document.getElementById('resetBtn').addEventListener('click', resetGame);
+      document.getElementById('undoBtn').addEventListener('click', undoMove);
+      document.getElementById('changeEloBtn').addEventListener('click', changeElo);
+
+      // Initialize initial difficulty display
+      updateInitialDifficultyDisplay();
+    });
+  </script>
+</body>
+</html>
